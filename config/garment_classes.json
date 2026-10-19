@@ -1,0 +1,105 @@
+{
+  "_comment": "Maps DeepFashion's 50 categories onto my MVP garment classes. Keys become folder names on the data\/processed folder. 'spoken' is the phrase the template Natural Language Processing will say. 'group' is the coarser fallback used when the model is unsure between classes in the same group (e.g. unsure between blazer and jacket, it says 'a jacket'). I edited this config a couple of times based on the number of items on each group/class so the numbers make sense across the groups. Each time this is changed after we've built our subset using build_garment_subset.py, we have to delete the already created folders and rerun the subset generation. This file is also my attribute-selection rationale, so I record every exclusion and why in the 'excluded' key.",
+  "version": 3,
+  "classes": {
+    "t_shirt": {
+      "spoken": "a T-shirt",
+      "group": "casual_top",
+      "deepfashion": [
+        "Tee",
+        "Henley",
+        "Jersey"
+      ]
+    },
+    "shirt_blouse": {
+      "spoken": "a shirt",
+      "group": "shirt",
+      "deepfashion": [
+        "Blouse",
+        "Button-Down",
+        "Flannel"
+      ]
+    },
+    "tank_top": {
+      "spoken": "a tank top",
+      "group": "casual_top",
+      "deepfashion": [
+        "Tank",
+        "Halter"
+      ]
+    },
+    "sweater": {
+      "spoken": "a sweater",
+      "group": "knitwear",
+      "deepfashion": [
+        "Sweater",
+        "Turtleneck"
+      ]
+    },
+    "cardigan": {
+      "spoken": "a cardigan",
+      "group": "knitwear",
+      "deepfashion": [
+        "Cardigan"
+      ]
+    },
+    "hoodie": {
+      "spoken": "a hoodie",
+      "group": "knitwear",
+      "deepfashion": [
+        "Hoodie"
+      ]
+    },
+    "blazer": {
+      "spoken": "a blazer",
+      "group": "outerwear",
+      "deepfashion": [
+        "Blazer"
+      ]
+    },
+    "jacket": {
+      "spoken": "a jacket",
+      "group": "outerwear",
+      "deepfashion": [
+        "Jacket",
+        "Bomber",
+        "Anorak"
+      ]
+    },
+    "coat": {
+      "spoken": "a coat",
+      "group": "outerwear",
+      "deepfashion": [
+        "Coat",
+        "Parka",
+        "Peacoat"
+      ]
+    },
+    "dress": {
+      "spoken": "a dress",
+      "group": "dress",
+      "deepfashion": [
+        "Dress"
+      ]
+    }
+  },
+  "group_spoken": {
+    "casual_top": "a top",
+    "shirt": "a shirt",
+    "knitwear": "a sweater",
+    "outerwear": "a jacket",
+    "dress": "a dress"
+  },
+  "excluded": {
+    "Button-Down / Flannel (as their own 'shirt' class)": "Only 467 train / 97 test images combined (Oct 2026 count), too few for a reliable test score; I merged them with Blouse into shirt_blouse.",
+    "Shirtdress, Sundress, Nightdress, Cape": "Listed in list_category_cloth.txt but have 0 images in list_category_img.txt.",
+    "Top": "Vague catch-all category (7,270 train images) mixing T-shirts, blouses and crop tops; would add label noise.",
+    "Poncho": "Rare in everyday conversation settings; visually ambiguous with coats and cardigans.",
+    "Turtleneck (as its own class)": "Only 99 train images; I merged it into sweater; better treated later as a neckline attribute.",
+    "Henley (as its own class)": "I merged it into t_shirt; the button placket is too small to see reliably at conversation distance.",
+    "Halter (as its own class)": "Only 11 train images; I merged it into tank_top.",
+    "Lower-body (Jeans, Skirt, Shorts, Chinos, Joggers, ...)": "In a face-to-face conversation the phone camera mostly sees the upper body.",
+    "Other full-body (Romper, Jumpsuit, Kimono, Kaftan, Caftan, Robe, Onesie, Coverup)": "Out of MVP scope: rare in conversation settings, sleepwear/swimwear, or easily confused with dress/coat.",
+    "Vest, polo shirt, suit": "Not DeepFashion categories; I would need my own labelled photos."
+  }
+}
