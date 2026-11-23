@@ -67,13 +67,16 @@ def crop_and_save(src: Path, box, out_path: Path, pad: float, short_side: int):
         x2 = min(w, int(x2 + pad * bw)) # move our  right edge right, i.e add from right edge
         y2 = min(h, int(y2 + pad * bh)) # move the bottom edge down
 
-        crop = im.crop((x1, y1, x2, y2))
+        crop = im.crop((x1, y1, x2, y2)) # padded image
 
         scale = short_side / min(crop.size) # find the ratio of the old to new padded image, then use this ratio to shrink it 
         
-        if scale < 1:  # only shrink (downsampling),  upscaling will just make the images bigger and blurrier with no information added to it
+        if scale < 1:  # only shrink (downsample) if the shorter side is larger than the default 256 size we specified
+            #  upscaling will just make the images bigger and blurrier with no information added to it
             crop = crop.resize((round(crop.width * scale), round(crop.height * scale)), Image.BICUBIC)
 
+            # Bicubi averages over a 4×4 neighborhood: Unlike nearest-neighbor (1 pixel) or bilinear (2×2 = 4 pixels), bicubic evaluates 16 surrounding pixels and accounts for intensity
+        # if image is alreaddy smaller than 256 px, we don't upscale it
         out_path.parent.mkdir(parents=True, exist_ok=True)
         crop.save(out_path, quality=92)
         return crop.size

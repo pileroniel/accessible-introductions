@@ -22,7 +22,7 @@ FEATURE_PARAMS = {
     "size": 128,                  # I resize every crop to size x size before HOG
     "orientations": 9,            # HOG: number of edge-direction bins (0-180 degrees)
     "pixels_per_cell": 16,        # HOG: 128/16 gives me 8 x 8 cells
-    "cells_per_block": 2,         # HOG: I normalise contrast over 2 x 2 cell blocks
+    "cells_per_block": 2,         # HOG: I normalise brightness change over 2 x 2 cell blocks
     "hsv_bins": [12, 4, 4],       # my colour histogram bins for hue, saturation, value
 }
 
@@ -44,6 +44,7 @@ def color_features(img: Image.Image, p=FEATURE_PARAMS) -> np.ndarray:
     hsv = np.asarray(img.convert("HSV"))
     parts = []
     for ch, bins in enumerate(p["hsv_bins"]):
+        # ch here is 0,1, or 2, which corresponds to hue, saturation, value
         h, _ = np.histogram(hsv[..., ch], bins=bins, range=(0, 256))
         parts.append(h / h.sum())
     return np.concatenate(parts)
