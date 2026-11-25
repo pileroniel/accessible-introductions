@@ -114,6 +114,12 @@ reports/*
 *.gif
 *.webp
 
+# Keep each run's figures and training history (small, and my report cites them).
+# reports/*/ means inside a run folder only, so big top-level CSVs in reports/ stay ignored.
+!reports/*/*.png
+!reports/*/*.jpg
+!reports/*/*.csv
+
 # Keep the project architecture image tracked
 !architecture.png
 
