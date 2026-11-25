@@ -1,0 +1,27 @@
+{
+  "run": "cnn_full_8",
+  "started": "2026-11-24 19:46",
+  "command": "scripts/train_cnn.py --data data/processed/garment_train2000 --epochs 4 --unfreeze all",
+  "data": "data\\processed\\garment_train2000",
+  "config": "B:\\Senior Project\\Code\\config\\garment_classes.json",
+  "reports": "reports\\cnn_full",
+  "model_out": "models\\checkpoints\\resnet50_cnn_full_8.pt",
+  "head_epochs": 3,
+  "epochs": 4,
+  "unfreeze": "all",
+  "batch": 32,
+  "lr_head": 0.001,
+  "lr_backbone": 0.0001,
+  "weight_decay": 0.0001,
+  "label_smoothing": 0.1,
+  "workers": 4,
+  "no_amp": false,
+  "sanity": false,
+  "amp": true,
+  "cnn_params": {
+    "arch": "resnet50",
+    "img_size": 224,
+    "pad_to_square": true,
+    "dropout": 0.2
+  }
+}
