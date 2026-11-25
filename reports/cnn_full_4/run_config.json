@@ -1,6 +1,6 @@
 {
-  "run": "cnn_full_4",
-  "started": "2026-11-23 00:57",
+  "run": "cnn_full_6",
+  "started": "2026-11-24 14:58",
   "command": "scripts/train_cnn.py --epochs 4 --unfreeze layer4",
   "data": "data\\processed\\garment",
   "config": "B:\\Senior Project\\Code\\config\\garment_classes.json",

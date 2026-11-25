@@ -131,19 +131,22 @@ def make_optimizer(model, lr_head, lr_backbone, weight_decay):
     return torch.optim.AdamW(groups, weight_decay=weight_decay)
 
 
-def train_one_epoch(model, loader, optimizer, criterion, scaler, device):
-    """I make one pass over the training images and return (mean loss, accuracy) on them."""
+def train_one_epoch(model, loader, optimizer, criterion, scaler, device, use_amp):
+    """I make one pass over the training images and return (mean loss, accuracy) on them.
+    use_amp True means float16 maths (faster, less memory), False means full float32."""
     model.train()
     freeze_batchnorm_stats(model)
-    use_amp = device.type == "cuda"
     total_loss, correct, seen = 0.0, 0, 0
     for images, labels in loader:
         images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        # Mixed precision: most maths runs in float16, which roughly halves memory so ResNet-50 fits in my 4 GB
+        # Mixed precision: most maths runs in float16, which roughly halves memory so ResNet-50 fits in my 4 GB virtual ram
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
             logits = model(images)
             loss = criterion(logits, labels)
+        if not torch.isfinite(loss): # if we get any NaNs, theres likely a problem with the floating point precision calculations
+            raise RuntimeError(f"Training loss became {loss.item()}. Stopping instead of training on NaN. \n Rerun, and if it happens again, add --no-amp to train in float32.")
+        
         scaler.scale(loss).backward()   # the scaler stops tiny float16 gradients from rounding to zero
         scaler.step(optimizer)
         scaler.update()
@@ -154,12 +157,12 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device):
 
 
 @torch.no_grad()
-def predict_proba(model, loader, device):
+def predict_proba(model, loader, device, use_amp):
     """I return (class probabilities, true labels) for every image in a loader."""
     model.eval()  # turns off dropout and uses BatchNorm's stored averages
     probs, labels = [], []
     for images, y in loader:
-        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
             logits = model(images.to(device, non_blocking=True))
         probs.append(torch.softmax(logits.float(), dim=1).cpu())
         labels.append(y)
@@ -179,13 +182,13 @@ def run_phase(phase, epochs, model, loaders, args, device, class_to_group, best,
     
     # label smoothing: with ~16% wrong labels, I don't want my model 100% sure of any training label
     criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
-    scaler = torch.amp.GradScaler(device.type, enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler(device.type, enabled=args.amp)  # only needed for float16
 
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
-        tr_loss, tr_acc = train_one_epoch(model, loaders["train"], optimizer, criterion, scaler, device)
+        tr_loss, tr_acc = train_one_epoch(model, loaders["train"], optimizer, criterion, scaler, device, args.amp)
         scheduler.step()
-        probs, y = predict_proba(model, loaders["val"], device)
+        probs, y = predict_proba(model, loaders["val"], device, args.amp)
         m, _ = score(y, probs, class_to_group)
         secs = time.perf_counter() - t0
         history.append({"phase": phase, "epoch": epoch, "train_loss": round(tr_loss, 4),
@@ -257,7 +260,7 @@ def main():
     ap.add_argument("--model-out", type=Path, default=None,
                     help="default: models/checkpoints/resnet50_<run folder name>.pt")
     ap.add_argument("--head-epochs", type=int, default=3, help="phase 1: head only")
-    ap.add_argument("--epochs", type=int, default=12, help="phase 2: fine-tuning")
+    ap.add_argument("--epochs", type=int, default=4, help="phase 2: fine-tuning")
     ap.add_argument("--unfreeze", choices=["layer4", "layer3", "all"], default="layer3")
     ap.add_argument("--batch", type=int, default=32, help="drop to 16 if I run out of GPU memory")
     ap.add_argument("--lr-head", type=float, default=1e-3)
@@ -265,11 +268,16 @@ def main():
     ap.add_argument("--weight-decay", type=float, default=1e-4)
     ap.add_argument("--label-smoothing", type=float, default=0.1)
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--no-amp", action="store_true",
+                    help="train in float32 instead of float16; slower and uses more memory, but avoids NaN")
     ap.add_argument("--sanity", action="store_true", help="overfit 64 images to check my setup")
     args = ap.parse_args()
     if args.sanity:
         args.head_epochs, args.epochs, args.unfreeze = 0, 15, "all"
         args.label_smoothing, args.reports = 0.0, Path("reports/cnn_sanity")
+
+    # float16 only works on the GPU, and --no-amp turns it off there too
+    args.amp = torch.cuda.is_available() and not args.no_amp
 
     # I number this run and record its settings before training, so even a crashed run leaves a trace
     run_dir = next_run_dir(args.reports)
@@ -283,8 +291,9 @@ def main():
 
     seed_everything()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.benchmark = True  # my input size never changes, so cuDNN can pick its fastest method
-    print(f"Device: {torch.cuda.get_device_name(0) if device.type == 'cuda' else 'CPU (this will be very slow)'}")
+    torch.backends.cudnn.benchmark = False  # True picked fp16 kernels that gave NaN on my GTX 1650 in some runs
+    print(f"Device: {torch.cuda.get_device_name(0) if device.type == 'cuda' else 'CPU (this will be very slow)'}"
+          f" | precision {'float16 (AMP)' if args.amp else 'float32'}")
 
     # 1. data
     loaders, classes, test_paths = make_data(args.data, args.batch, args.workers, args.sanity)
@@ -302,7 +311,7 @@ def main():
     print(f"\nBest on val: phase {best['phase']} epoch {best['epoch']} (macro-F1 {best['macro_f1']:.3f})")
 
     # 5. TEST, once, best weights only
-    probs, y_te = predict_proba(model, loaders["test"], device)
+    probs, y_te = predict_proba(model, loaders["test"], device, args.amp)
     test_m, test_pred = score(y_te, probs, class_to_group)
     print(f"TEST: accuracy {test_m['accuracy']:.3f} | macro-F1 {test_m['macro_f1']:.3f} | "
           f"top-2 {test_m['top2_accuracy']:.3f} | group-level {test_m['group_accuracy']:.3f}")
@@ -329,7 +338,7 @@ def main():
           f"Settings: phase 1 {args.head_epochs} epochs (head only), phase 2 {args.epochs} epochs "
           f"(unfreeze {args.unfreeze}), batch {args.batch}, lr head {args.lr_head} / backbone {args.lr_backbone}, "
           f"weight decay {args.weight_decay}, label smoothing {args.label_smoothing}, "
-          f"pad to square {CNN_PARAMS['pad_to_square']}", "",
+          f"pad to square {CNN_PARAMS['pad_to_square']}, precision {'float16 (AMP)' if args.amp else 'float32'}", "",
           "## Training history (validation set)", "",
           "| Phase | Epoch | Train loss | Train acc | Val acc | Val macro-F1 | Val top-2 | Val group-level | Time (s) |",
           "|---|---|---|---|---|---|---|---|---|"]
